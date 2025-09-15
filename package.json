@@ -1,0 +1,16 @@
+{
+  "name": "llama-chat-app",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A simple chat application using Meta Llama API with MongoDB for conversation storage.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.1",
+    "express": "^4.19.0",
+    "mongoose": "^7.6.0",
+    "node-fetch": "^3.3.2"
+  }
+}
