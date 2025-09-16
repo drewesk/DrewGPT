@@ -2,20 +2,12 @@ import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-// Chat component manages the chat conversation. It creates a new
-// conversation on mount, sends user messages to the backend API, and
-// displays the assistant's responses. It maintains an array of message
-// objects in state and renders them in sequence.
-
 export default function Chat() {
   const [convId, setConvId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [copied, setCopied] = useState(false);
 
-  // On mount, create a new conversation. The backend returns a
-  // conversationId, which is stored in state. This ID is used for
-  // subsequent requests.
   useEffect(() => {
     async function initConversation() {
       try {
@@ -29,11 +21,9 @@ export default function Chat() {
     initConversation();
   }, []);
 
-  // Send a user message and retrieve the assistant's reply
   const handleSend = async () => {
     const content = input.trim();
     if (!content || !convId) return;
-    // Append the user's message to the local state immediately
     setMessages((msgs) => [...msgs, { role: 'user', content }]);
     setInput('');
     try {
@@ -51,7 +41,6 @@ export default function Chat() {
     }
   };
 
-  // Copy helpers: use Clipboard API when available; fallback otherwise
   function copyTextFallback(text) {
     const textarea = document.createElement('textarea');
     textarea.value = text;

@@ -1,4 +1,3 @@
-// server.js
 import dotenv from 'dotenv';
 import express from 'express';
 import mongoose from 'mongoose';
@@ -11,21 +10,16 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Use native fetch (Node 18+)
 const globalFetch = global.fetch || (await import('node-fetch')).default;
 
-// Allow JSON request bodies
 app.use(express.json());
 
-// Setup __dirname for ESM
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Serve static frontend
 const staticDir = path.join(__dirname, 'client', 'dist');
 app.use(express.static(staticDir));
 
-// Connect to MongoDB
 mongoose
   .connect(process.env.MONGODB_URI, {
     useNewUrlParser: true,
@@ -34,7 +28,6 @@ mongoose
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch((err) => console.error('❌ MongoDB connection error:', err));
 
-// Create new conversation
 app.post('/api/conversation', async (req, res) => {
   try {
     const conversation = new Conversation({ messages: [] });
@@ -46,7 +39,6 @@ app.post('/api/conversation', async (req, res) => {
   }
 });
 
-// Get all messages from a conversation
 app.get('/api/conversation/:id/messages', async (req, res) => {
   const { id } = req.params;
   try {
@@ -61,7 +53,6 @@ app.get('/api/conversation/:id/messages', async (req, res) => {
   }
 });
 
-// Add message, get Llama reply, store both
 app.post('/api/conversation/:id/message', async (req, res) => {
   const { id } = req.params;
   const { content } = req.body;
@@ -76,10 +67,8 @@ app.post('/api/conversation/:id/message', async (req, res) => {
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
-    // Save user message
     conversation.messages.push({ role: 'user', content });
 
-    // Compose prompt
     const messagesForLlama = [];
     const systemPrompt = process.env.SYSTEM_PROMPT || 'You are a helpful assistant.';
     messagesForLlama.push({ role: 'system', content: systemPrompt });
@@ -88,10 +77,8 @@ app.post('/api/conversation/:id/message', async (req, res) => {
     const recentMessages = conversation.messages.slice(-memoryLength);
     recentMessages.forEach((msg) => messagesForLlama.push({ role: msg.role, content: msg.content }));
 
-    // Get Llama reply
     const assistantReply = await callLlamaAPI(messagesForLlama);
 
-    // Save assistant message
     conversation.messages.push({ role: 'assistant', content: assistantReply });
     await conversation.save();
 
@@ -102,7 +89,6 @@ app.post('/api/conversation/:id/message', async (req, res) => {
   }
 });
 
-// Meta Llama API call
 async function callLlamaAPI(messages) {
   const apiKey = process.env.LLAMA_API_KEY;
   const model = process.env.LLAMA_MODEL || 'Llama-3.3-70B-Instruct';
@@ -133,7 +119,6 @@ async function callLlamaAPI(messages) {
   const data = await response.json();
   let reply = '';
 
-  // Compatible with Meta's Llama response
   if (Array.isArray(data.choices) && data.choices.length > 0) {
     reply = data.choices[0].message?.content || '';
   } else if (data.completion_message?.content?.type === 'text') {
@@ -143,7 +128,6 @@ async function callLlamaAPI(messages) {
   return reply;
 }
 
-// Launch server
 app.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
 });

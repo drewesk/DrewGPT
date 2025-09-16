@@ -1,8 +1,5 @@
-// src/models/Conversation.js
-
 import mongoose from 'mongoose';
 
-// Each message in a conversation
 const messageSchema = new mongoose.Schema({
   role: {
     type: String,
@@ -19,11 +16,9 @@ const messageSchema = new mongoose.Schema({
   }
 });
 
-// Full conversation schema
 const conversationSchema = new mongoose.Schema({
   messages: [messageSchema]
 });
 
-// Export as ES module
 const Conversation = mongoose.model('Conversation', conversationSchema);
 export default Conversation;
