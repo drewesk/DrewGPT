@@ -6,6 +6,9 @@ import { fileURLToPath } from 'url';
 import Conversation from './src/models/Conversation.js';
 import cors from 'cors';
 
+const app = express();
+const PORT = process.env.PORT || 3000;
+
 const allowedOrigins = [process.env.FRONTEND_URL || 'http://localhost:5173'];
 
 app.use(cors({
@@ -15,8 +18,6 @@ app.use(cors({
 
 dotenv.config();
 
-const app = express();
-const PORT = process.env.PORT || 3000;
 
 const globalFetch = global.fetch || (await import('node-fetch')).default;
 
