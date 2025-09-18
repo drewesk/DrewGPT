@@ -4,6 +4,14 @@ import mongoose from 'mongoose';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import Conversation from './src/models/Conversation.js';
+import cors from 'cors';
+
+const allowedOrigins = [process.env.FRONTEND_URL || 'http://localhost:5173'];
+
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true, // if you need cookies/auth
+}));
 
 dotenv.config();
 
