@@ -1,16 +1,17 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  publicDir: 'public',
   server: {
-    port: 5173,
-    proxy: {
-      '/api': 'https://llama-chat-backend.onrender.com'
-    }
+    port: 3000,
+    open: true
+  },
+  preview: {
+    port: 4173
   },
   build: {
-    outDir: 'dist',
     emptyOutDir: true
   }
-});
+})
