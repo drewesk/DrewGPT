@@ -391,6 +391,13 @@ body::before {
   font-size: 0.85rem;
 }
 
+.file-hint {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-left: 0.5rem;
+  align-self: center;
+}
+
 .file-error {
   color: #ef4444;
   font-size: 0.85rem;
@@ -563,6 +570,19 @@ body::before {
 
   .btn {
     padding: 0.65rem 1.25rem;
+    font-size: 0.95rem;
+  }
+
+  .preferences-terminal {
+    gap: 0.6rem;
+  }
+
+  .preferences-terminal-log {
+    max-height: 170px;
+    font-size: 0.9rem;
+  }
+
+  .preferences-terminal-input input {
     font-size: 0.95rem;
   }
 }
@@ -830,6 +850,42 @@ body::before {
 
   .btn-secondary:hover {
     background: rgba(55, 65, 82, 0.95);
+  }
+}
+
+@media (max-width: 600px) {
+  .app-header {
+    display: none;
+  }
+
+  .preferences-overlay {
+    padding: 1.25rem 0.75rem;
+  }
+
+  .preferences-modal {
+    width: 100%;
+    border-radius: 14px;
+    padding: 1rem;
+  }
+
+  .preferences-title {
+    font-size: 1.35rem;
+  }
+
+  .preferences-intro {
+    font-size: 0.95rem;
+  }
+
+  .preferences-terminal-log {
+    max-height: 200px;
+  }
+
+  .preferences-terminal-input {
+    padding: 0.4rem 0.6rem;
+  }
+
+  .terminal-prompt {
+    font-size: 0.95rem;
   }
 }
 

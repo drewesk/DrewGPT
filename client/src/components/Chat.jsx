@@ -56,6 +56,7 @@ export default function Chat() {
   const ALLOWED_EXTENSIONS = [
     'txt','md','markdown','json','csv','js','ts','jsx','tsx','py','rb','go','java','c','cpp','cs','html','css','sh','yaml','yml','log'
   ];
+  const SUPPORTED_FORMATS_LABEL = ALLOWED_EXTENSIONS.map((ext) => `.${ext}`).join(', ');
 
   const isAllowedFile = (file) => {
     if (!file) return false;
@@ -472,6 +473,7 @@ export default function Chat() {
             </svg>
             Attach File
           </button>
+          <span className="file-hint">Supported formats: {SUPPORTED_FORMATS_LABEL}</span>
 
           {selectedFile && (
             <>
