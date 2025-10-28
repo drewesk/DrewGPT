@@ -15,7 +15,13 @@ dotenv.config({ path: path.join(__dirname, '.env'), override: true });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const allowedOrigins = [process.env.FRONTEND_URL || 'http://localhost:5173'];
+const defaultOrigin = process.env.FRONTEND_URL || 'http://localhost:5173';
+const additionalOrigins = (process.env.CORS_ADDITIONAL_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const allowedOrigins = Array.from(new Set([defaultOrigin, ...additionalOrigins]));
+console.log('🌐 Allowed CORS origins:', allowedOrigins.join(', ') || '(none)');
 
 const PREFERENCE_KEYS = ['systemPrompt', 'tone', 'safetyNotes'];
 const preferencesPath = path.join(__dirname, 'preferences.yaml');

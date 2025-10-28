@@ -227,7 +227,13 @@ export default function PreferencesWizard({ onComplete }) {
         return `Type the ${currentStep.label}.\n(Press q to cancel this entry.)\n${placeholder ? `Suggested: ${placeholder}` : ''}`.trim();
       }
 
-      return 'Please respond with y, n, or q.';
+      // Treat any other input as an immediate value for convenience
+      setResponses((prev) => ({ ...prev, [currentStep.key]: input }));
+      advanceToNextStep();
+      const nextStep = WIZARD_STEPS[currentIndex + 1];
+      return nextStep
+        ? `Saved ${currentStep.label}.\n\n${buildPrompt(nextStep, placeholders[nextStep.key])}`
+        : await persistPreferences();
     },
     [advanceToNextStep, awaitingDetail, currentIndex, currentStep, finishWizard, loading, persistPreferences, placeholders, finished]
   );

@@ -1,0 +1,5 @@
+# Exclude local-only configuration files from Cloud Build/Run deployments
+.env
+cloud-sql-credentials.txt
+logs/
+node_modules/

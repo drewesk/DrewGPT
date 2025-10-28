@@ -4,7 +4,8 @@ node_modules
 client/logs/
 server/logs/
 .DS_Store
-
+client/dist/
 /generated/prisma
 server/.env
+server/cloud-sql-credentials.txt
 
