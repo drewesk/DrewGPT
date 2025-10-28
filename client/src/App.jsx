@@ -108,7 +108,7 @@ export default function App() {
   return (
     <div className="app-container">
       <header className="app-header">
-        <h1 className="app-title">🦙 Drew-Llama-Chat</h1>
+        <h1 className="app-title">🦙Llama-Chat</h1>
         <p className="app-subtitle">Your AI-Powered Assistant</p>
         <button 
           className="logout-button"
