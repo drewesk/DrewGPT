@@ -1,17 +1,18 @@
 import dotenv from 'dotenv';
 import express from 'express';
-import mongoose from 'mongoose';
+import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
-import Conversation from './src/models/Conversation.js';
-import cors from 'cors';
+import { PrismaClient } from '@prisma/client';
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.join(__dirname, '.env'), override: true });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
 const allowedOrigins = [process.env.FRONTEND_URL || 'http://localhost:5173'];
 
 app.use(cors({
@@ -19,19 +20,13 @@ app.use(cors({
   credentials: true,
 }));
 
-const useMongo = Boolean(process.env.MONGODB_URI);
+const useDatabase = Boolean(process.env.DATABASE_URL);
+console.log('📦 DATABASE_URL loaded:', useDatabase ? 'yes' : 'no');
+const prisma = useDatabase ? new PrismaClient() : null;
 const hasLlamaApiKey = Boolean(process.env.LLAMA_API_KEY);
 
-if (useMongo) {
-  mongoose
-    .connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    })
-    .then(() => console.log('✅ Connected to MongoDB'))
-    .catch((err) => console.error('❌ MongoDB connection error:', err));
-} else {
-  console.warn('⚠️ MONGODB_URI not set. Using in-memory conversation store.');
+if (!useDatabase) {
+  console.warn('⚠️ DATABASE_URL not set. Using in-memory conversation store.');
 }
 
 if (!hasLlamaApiKey) {
@@ -40,47 +35,17 @@ if (!hasLlamaApiKey) {
 
 const memoryConversations = new Map();
 
-async function createConversation() {
-  if (useMongo) {
-    const conversation = new Conversation({ messages: [] });
-    await conversation.save();
-    return conversation;
-  }
-  const id = randomUUID();
-  const conversation = { _id: id, messages: [] };
-  memoryConversations.set(id, conversation);
-  return conversation;
-}
-
-async function getConversationById(id) {
-  if (useMongo) {
-    return Conversation.findById(id);
-  }
-  return memoryConversations.get(id) || null;
-}
-
-async function saveConversation(conversation) {
-  if (useMongo) {
-    await conversation.save();
-  } else {
-    memoryConversations.set(conversation._id, conversation);
-  }
-}
-
 const globalFetch = global.fetch || (await import('node-fetch')).default;
 
 app.use(express.json());
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const staticDir = path.join(__dirname, '..', 'client', 'dist');
 app.use(express.static(staticDir));
 
 app.post('/api/conversation', async (req, res) => {
   try {
-    const conversation = await createConversation();
-    res.json({ conversationId: conversation._id.toString() });
+    const conversationId = await createConversation();
+    res.json({ conversationId });
   } catch (err) {
     console.error('❌ Error creating conversation:', err);
     res.status(500).json({ error: 'Failed to create conversation' });
@@ -90,11 +55,12 @@ app.post('/api/conversation', async (req, res) => {
 app.get('/api/conversation/:id/messages', async (req, res) => {
   const { id } = req.params;
   try {
-    const conversation = await getConversationById(id);
-    if (!conversation) {
+    if (!(await conversationExists(id))) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
-    res.json(conversation.messages);
+
+    const messages = await getAllMessages(id);
+    res.json(messages.map(({ role, content }) => ({ role, content })));
   } catch (err) {
     console.error('❌ Error fetching messages:', err);
     res.status(500).json({ error: 'Failed to fetch messages' });
@@ -110,26 +76,24 @@ app.post('/api/conversation/:id/message', async (req, res) => {
   }
 
   try {
-    const conversation = await getConversationById(id);
-    if (!conversation) {
+    if (!(await conversationExists(id))) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
-    conversation.messages.push({ role: 'user', content });
+    await addMessage(id, 'user', content);
 
-    const messagesForLlama = [];
     const systemPrompt = process.env.SYSTEM_PROMPT || 'You are a helpful assistant.';
-    messagesForLlama.push({ role: 'system', content: systemPrompt });
+    const memoryLength = getMemoryLength();
+    const recentMessages = await getRecentMessages(id, memoryLength);
 
-    const memoryLengthEnv = parseInt(process.env.MEMORY_LENGTH, 10);
-    const memoryLength = Number.isFinite(memoryLengthEnv) ? Math.max(memoryLengthEnv, 6) : Math.max(15, 6);
-    const recentMessages = conversation.messages.slice(-memoryLength);
-    recentMessages.forEach((msg) => messagesForLlama.push({ role: msg.role, content: msg.content }));
+    const messagesForLlama = [
+      { role: 'system', content: systemPrompt },
+      ...recentMessages.map((msg) => ({ role: msg.role, content: msg.content })),
+    ];
 
     const assistantReply = await generateAssistantReply(messagesForLlama);
 
-    conversation.messages.push({ role: 'assistant', content: assistantReply });
-    await saveConversation(conversation);
+    await addMessage(id, 'assistant', assistantReply);
 
     res.json({ reply: assistantReply });
   } catch (err) {
@@ -137,6 +101,99 @@ app.post('/api/conversation/:id/message', async (req, res) => {
     res.status(500).json({ error: 'Failed to process message' });
   }
 });
+
+async function createConversation() {
+  if (useDatabase && prisma) {
+    const conversation = await prisma.conversation.create({ data: {} });
+    return conversation.conversationId;
+  }
+
+  const id = randomUUID();
+  memoryConversations.set(id, []);
+  return id;
+}
+
+async function conversationExists(conversationId) {
+  if (useDatabase && prisma) {
+    const conversation = await prisma.conversation.findUnique({
+      where: { conversationId },
+    });
+    return Boolean(conversation);
+  }
+
+  return memoryConversations.has(conversationId);
+}
+
+async function getAllMessages(conversationId) {
+  if (useDatabase && prisma) {
+    const messages = await prisma.message.findMany({
+      where: { conversationId },
+      orderBy: [
+        { createdAt: 'asc' },
+        { messageId: 'asc' },
+      ],
+    });
+
+    return messages.map(({ role, content, createdAt }) => ({
+      role,
+      content,
+      createdAt: createdAt.toISOString(),
+    }));
+  }
+
+  const stored = memoryConversations.get(conversationId);
+  if (!stored) {
+    throw new Error('Conversation not found');
+  }
+
+  return [...stored];
+}
+
+async function addMessage(conversationId, role, content) {
+  if (useDatabase && prisma) {
+    await prisma.message.create({
+      data: {
+        conversationId,
+        role,
+        content,
+      },
+    });
+    return;
+  }
+
+  const stored = memoryConversations.get(conversationId);
+  if (!stored) {
+    throw new Error('Conversation not found');
+  }
+
+  stored.push({ role, content, createdAt: new Date().toISOString() });
+}
+
+function getMemoryLength() {
+  const memoryLengthEnv = parseInt(process.env.MEMORY_LENGTH, 10);
+  const defaultLength = 15;
+  return Number.isFinite(memoryLengthEnv)
+    ? Math.max(memoryLengthEnv, 6)
+    : Math.max(defaultLength, 6);
+}
+
+async function getRecentMessages(conversationId, limit) {
+  if (useDatabase && prisma) {
+    const messages = await prisma.message.findMany({
+      where: { conversationId },
+      orderBy: [
+        { createdAt: 'desc' },
+        { messageId: 'desc' },
+      ],
+      take: limit,
+    });
+
+    return messages.reverse().map(({ role, content }) => ({ role, content }));
+  }
+
+  const stored = memoryConversations.get(conversationId) || [];
+  return stored.slice(-limit).map(({ role, content }) => ({ role, content }));
+}
 
 async function generateAssistantReply(messages) {
   if (!hasLlamaApiKey) {
@@ -188,4 +245,18 @@ async function callLlamaAPI(messages) {
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
+});
+
+process.on('SIGINT', async () => {
+  if (prisma) {
+    await prisma.$disconnect();
+  }
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  if (prisma) {
+    await prisma.$disconnect();
+  }
+  process.exit(0);
 });

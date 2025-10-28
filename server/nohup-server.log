@@ -2,5 +2,5 @@
 > llama-chat-app@1.0.0 dev
 > node server.js
 
-⚠️ MONGODB_URI not set. Using in-memory conversation store.
+📦 DATABASE_URL loaded: yes
 🚀 Server running at http://localhost:3000

@@ -4,3 +4,7 @@ node_modules
 client/logs/
 server/logs/
 .DS_Store
+
+/generated/prisma
+server/.env
+

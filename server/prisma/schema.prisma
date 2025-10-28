@@ -1,0 +1,39 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Conversation {
+  conversationId String   @id @default(uuid()) @db.Uuid @map("conversation_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  messages       Message[]
+
+  @@map("conversations")
+}
+
+model Message {
+  messageId      String      @id @default(uuid()) @db.Uuid @map("message_id")
+  conversationId String      @db.Uuid @map("conversation_id")
+  role           MessageRole
+  content        String
+  createdAt      DateTime    @default(now()) @map("created_at")
+  conversation   Conversation @relation(fields: [conversationId], references: [conversationId], onDelete: Cascade)
+
+  @@map("messages")
+  @@index([conversationId], map: "messages_conversation_id_idx")
+}
+
+enum MessageRole {
+  user
+  assistant
+}

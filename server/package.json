@@ -2,17 +2,23 @@
   "name": "llama-chat-app",
   "version": "1.0.0",
   "type": "module",
-  "description": "A simple chat application using Meta Llama API with MongoDB for conversation storage.",
+  "description": "A simple chat application using Meta Llama API with Prisma/PostgreSQL storage.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:migrate:dev": "prisma migrate dev"
   },
   "dependencies": {
+    "@prisma/client": "^6.18.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.1",
     "express": "^4.19.0",
-    "mongoose": "^7.6.0",
     "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "prisma": "^6.18.0"
   }
 }
