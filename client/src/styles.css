@@ -733,13 +733,6 @@ body::before {
   color: #fbbf24;
 }
 
-.preferences-modal .ReactTerminal {
-  border-radius: 12px;
-  overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(15, 23, 42, 0.85);
-}
-
 
 @keyframes shake {
   0%, 100% {
@@ -838,4 +831,88 @@ body::before {
   .btn-secondary:hover {
     background: rgba(55, 65, 82, 0.95);
   }
+}
+
+/* Preferences Wizard Terminal Styles */
+.preferences-terminal {
+  background: rgba(10, 12, 16, 0.95);
+  color: #e2e8f0;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 16px;
+  padding: 1rem;
+  font-family: 'Fira Code', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: 0 20px 45px -25px rgba(15, 23, 42, 0.75);
+}
+
+.preferences-terminal-log {
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+  font-size: 0.95rem;
+}
+
+.preferences-terminal-log::-webkit-scrollbar {
+  width: 6px;
+}
+
+.preferences-terminal-log::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, rgba(103, 232, 249, 0.4), rgba(59, 130, 246, 0.4));
+  border-radius: 999px;
+}
+
+.preferences-terminal-log::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, rgba(103, 232, 249, 0.7), rgba(59, 130, 246, 0.7));
+}
+
+.terminal-line {
+  margin-bottom: 0.35rem;
+  white-space: pre-wrap;
+}
+
+.terminal-line-user {
+  color: #67e8f9;
+}
+
+.terminal-line-system {
+  color: #e2e8f0;
+}
+
+.preferences-terminal-input {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.75rem;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 10px;
+}
+
+.preferences-terminal-input input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  caret-color: #67e8f9;
+}
+
+.preferences-terminal-input input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.preferences-terminal-input input::placeholder {
+  color: rgba(226, 232, 240, 0.5);
+}
+
+.terminal-prompt {
+  color: #67e8f9;
+  font-weight: 600;
 }

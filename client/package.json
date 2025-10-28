@@ -12,7 +12,6 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^9.0.1",
-    "react-terminal-component-new": "^2.3.6",
     "remark-gfm": "^4.0.0",
     "styled-components": "^6.1.8"
   },
