@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Chat from './components/Chat.jsx';
+import PreferencesWizard from './components/PreferencesWizard.jsx';
 import './styles.css';
 
 export default function App() {
@@ -7,6 +8,7 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [attempts, setAttempts] = useState(0);
+  const [showPreferencesWizard, setShowPreferencesWizard] = useState(false);
   
   const CORRECT_PASSWORD = 'Pass123@';
   const MAX_ATTEMPTS = 5;
@@ -18,6 +20,15 @@ export default function App() {
       setIsAuthenticated(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      const wizardCompleted = sessionStorage.getItem('llama-chat-prefs-complete') === 'true';
+      setShowPreferencesWizard(!wizardCompleted);
+    } else {
+      setShowPreferencesWizard(false);
+    }
+  }, [isAuthenticated]);
   
   const handlePasswordSubmit = (e) => {
     e.preventDefault();
@@ -37,6 +48,11 @@ export default function App() {
       setPassword('');
     }
   };
+  
+  const handleWizardComplete = useCallback(() => {
+    sessionStorage.setItem('llama-chat-prefs-complete', 'true');
+    setShowPreferencesWizard(false);
+  }, []);
   
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
@@ -114,9 +130,11 @@ export default function App() {
           className="logout-button"
           onClick={() => {
             sessionStorage.removeItem('llama-chat-auth');
+            sessionStorage.removeItem('llama-chat-prefs-complete');
             setIsAuthenticated(false);
             setPassword('');
             setAttempts(0);
+            setShowPreferencesWizard(false);
           }}
           title="Lock Chat"
         >
@@ -124,6 +142,9 @@ export default function App() {
         </button>
       </header>
       <Chat />
+      {showPreferencesWizard && (
+        <PreferencesWizard onComplete={handleWizardComplete} />
+      )}
     </div>
   );
 }

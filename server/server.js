@@ -2,8 +2,10 @@ import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { PrismaClient } from '@prisma/client';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -14,6 +16,16 @@ dotenv.config({ path: path.join(__dirname, '.env'), override: true });
 const app = express();
 const PORT = process.env.PORT || 3000;
 const allowedOrigins = [process.env.FRONTEND_URL || 'http://localhost:5173'];
+
+const PREFERENCE_KEYS = ['systemPrompt', 'tone', 'safetyNotes'];
+const preferencesPath = path.join(__dirname, 'preferences.yaml');
+const defaultPreferences = Object.freeze({
+  systemPrompt: process.env.SYSTEM_PROMPT || 'You are a helpful assistant.',
+  tone: 'Friendly, precise, and concise.',
+  safetyNotes: 'Politely decline unsafe or policy-violating requests.',
+});
+
+let currentPreferences = await loadPreferences();
 
 app.use(cors({
   origin: allowedOrigins,
@@ -41,6 +53,25 @@ app.use(express.json());
 
 const staticDir = path.join(__dirname, '..', 'client', 'dist');
 app.use(express.static(staticDir));
+
+app.get('/api/preferences', (req, res) => {
+  res.json({ preferences: currentPreferences });
+});
+
+app.post('/api/preferences', async (req, res) => {
+  try {
+    const incoming = sanitizeIncomingPreferences(req.body || {});
+    const merged = applyPreferenceDefaults({ ...currentPreferences, ...incoming });
+
+    await persistPreferences(merged);
+    currentPreferences = merged;
+
+    res.json({ preferences: currentPreferences });
+  } catch (err) {
+    console.error('❌ Error saving preferences:', err);
+    res.status(500).json({ error: 'Failed to save preferences' });
+  }
+});
 
 app.post('/api/conversation', async (req, res) => {
   try {
@@ -82,7 +113,8 @@ app.post('/api/conversation/:id/message', async (req, res) => {
 
     await addMessage(id, 'user', content);
 
-    const systemPrompt = process.env.SYSTEM_PROMPT || 'You are a helpful assistant.';
+    const effectivePreferences = currentPreferences || defaultPreferences;
+    const systemPrompt = buildSystemPrompt(effectivePreferences);
     const memoryLength = getMemoryLength();
     const recentMessages = await getRecentMessages(id, memoryLength);
 
@@ -101,6 +133,82 @@ app.post('/api/conversation/:id/message', async (req, res) => {
     res.status(500).json({ error: 'Failed to process message' });
   }
 });
+
+function buildSystemPrompt(preferences) {
+  const base = (preferences?.systemPrompt || defaultPreferences.systemPrompt).trim();
+  const sections = [base];
+
+  const tone = preferences?.tone?.trim();
+  if (tone) {
+    sections.push(`Preferred tone: ${tone}`);
+  }
+
+  const safety = preferences?.safetyNotes?.trim();
+  if (safety) {
+    sections.push(`Safety guidance: ${safety}`);
+  }
+
+  return sections.join('\n\n');
+}
+
+async function loadPreferences() {
+  const stored = await readPreferencesFromDisk();
+  return applyPreferenceDefaults(stored);
+}
+
+async function readPreferencesFromDisk() {
+  try {
+    const yamlRaw = await fs.readFile(preferencesPath, 'utf8');
+    const parsed = parseYaml(yamlRaw);
+    if (parsed && typeof parsed === 'object') {
+      return parsed;
+    }
+    return {};
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      console.warn('⚠️ Unable to read preferences file:', err.message);
+    }
+    return {};
+  }
+}
+
+async function persistPreferences(preferences) {
+  const toPersist = {};
+  for (const key of PREFERENCE_KEYS) {
+    const value = preferences?.[key];
+    if (typeof value === 'string' && value.trim()) {
+      toPersist[key] = value.trim();
+    }
+  }
+
+  const serialized = stringifyYaml(toPersist, { indent: 2 });
+  await fs.writeFile(preferencesPath, serialized, 'utf8');
+}
+
+function sanitizeIncomingPreferences(raw) {
+  const sanitized = {};
+  for (const key of PREFERENCE_KEYS) {
+    const value = raw[key];
+    if (typeof value === 'string') {
+      const trimmed = value.trim().slice(0, 1500);
+      if (trimmed) {
+        sanitized[key] = trimmed;
+      }
+    }
+  }
+  return sanitized;
+}
+
+function applyPreferenceDefaults(overrides) {
+  const cleaned = {};
+  for (const key of PREFERENCE_KEYS) {
+    const value = overrides?.[key];
+    if (typeof value === 'string' && value.trim()) {
+      cleaned[key] = value.trim();
+    }
+  }
+  return { ...defaultPreferences, ...cleaned };
+}
 
 async function createConversation() {
   if (useDatabase && prisma) {

@@ -16,7 +16,8 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.1",
     "express": "^4.19.0",
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^3.3.2",
+    "yaml": "^2.6.0"
   },
   "devDependencies": {
     "prisma": "^6.18.0"
