@@ -3,8 +3,11 @@ import express from 'express';
 import mongoose from 'mongoose';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { randomUUID } from 'crypto';
 import Conversation from './src/models/Conversation.js';
 import cors from 'cors';
+
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,11 +16,56 @@ const allowedOrigins = [process.env.FRONTEND_URL || 'http://localhost:5173'];
 
 app.use(cors({
   origin: allowedOrigins,
-  credentials: true, // if you need cookies/auth
+  credentials: true,
 }));
 
-dotenv.config();
+const useMongo = Boolean(process.env.MONGODB_URI);
+const hasLlamaApiKey = Boolean(process.env.LLAMA_API_KEY);
 
+if (useMongo) {
+  mongoose
+    .connect(process.env.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    })
+    .then(() => console.log('✅ Connected to MongoDB'))
+    .catch((err) => console.error('❌ MongoDB connection error:', err));
+} else {
+  console.warn('⚠️ MONGODB_URI not set. Using in-memory conversation store.');
+}
+
+if (!hasLlamaApiKey) {
+  console.warn('⚠️ LLAMA_API_KEY not set. Falling back to stubbed assistant responses.');
+}
+
+const memoryConversations = new Map();
+
+async function createConversation() {
+  if (useMongo) {
+    const conversation = new Conversation({ messages: [] });
+    await conversation.save();
+    return conversation;
+  }
+  const id = randomUUID();
+  const conversation = { _id: id, messages: [] };
+  memoryConversations.set(id, conversation);
+  return conversation;
+}
+
+async function getConversationById(id) {
+  if (useMongo) {
+    return Conversation.findById(id);
+  }
+  return memoryConversations.get(id) || null;
+}
+
+async function saveConversation(conversation) {
+  if (useMongo) {
+    await conversation.save();
+  } else {
+    memoryConversations.set(conversation._id, conversation);
+  }
+}
 
 const globalFetch = global.fetch || (await import('node-fetch')).default;
 
@@ -26,22 +74,13 @@ app.use(express.json());
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const staticDir = path.join(__dirname, 'client', 'dist');
+const staticDir = path.join(__dirname, '..', 'client', 'dist');
 app.use(express.static(staticDir));
-
-mongoose
-  .connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => console.log('✅ Connected to MongoDB'))
-  .catch((err) => console.error('❌ MongoDB connection error:', err));
 
 app.post('/api/conversation', async (req, res) => {
   try {
-    const conversation = new Conversation({ messages: [] });
-    await conversation.save();
-    res.json({ conversationId: conversation._id });
+    const conversation = await createConversation();
+    res.json({ conversationId: conversation._id.toString() });
   } catch (err) {
     console.error('❌ Error creating conversation:', err);
     res.status(500).json({ error: 'Failed to create conversation' });
@@ -51,7 +90,7 @@ app.post('/api/conversation', async (req, res) => {
 app.get('/api/conversation/:id/messages', async (req, res) => {
   const { id } = req.params;
   try {
-    const conversation = await Conversation.findById(id);
+    const conversation = await getConversationById(id);
     if (!conversation) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
@@ -71,7 +110,7 @@ app.post('/api/conversation/:id/message', async (req, res) => {
   }
 
   try {
-    const conversation = await Conversation.findById(id);
+    const conversation = await getConversationById(id);
     if (!conversation) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
@@ -82,14 +121,15 @@ app.post('/api/conversation/:id/message', async (req, res) => {
     const systemPrompt = process.env.SYSTEM_PROMPT || 'You are a helpful assistant.';
     messagesForLlama.push({ role: 'system', content: systemPrompt });
 
-    const memoryLength = parseInt(process.env.MEMORY_LENGTH, 10) || 15;
+    const memoryLengthEnv = parseInt(process.env.MEMORY_LENGTH, 10);
+    const memoryLength = Number.isFinite(memoryLengthEnv) ? Math.max(memoryLengthEnv, 6) : Math.max(15, 6);
     const recentMessages = conversation.messages.slice(-memoryLength);
     recentMessages.forEach((msg) => messagesForLlama.push({ role: msg.role, content: msg.content }));
 
-    const assistantReply = await callLlamaAPI(messagesForLlama);
+    const assistantReply = await generateAssistantReply(messagesForLlama);
 
     conversation.messages.push({ role: 'assistant', content: assistantReply });
-    await conversation.save();
+    await saveConversation(conversation);
 
     res.json({ reply: assistantReply });
   } catch (err) {
@@ -97,6 +137,15 @@ app.post('/api/conversation/:id/message', async (req, res) => {
     res.status(500).json({ error: 'Failed to process message' });
   }
 });
+
+async function generateAssistantReply(messages) {
+  if (!hasLlamaApiKey) {
+    const lastUserMessage = [...messages].reverse().find((msg) => msg.role === 'user');
+    const userContent = lastUserMessage?.content || '';
+    return `LLAMA_API_KEY not configured. Echoing your message:\n\n${userContent}`;
+  }
+  return callLlamaAPI(messages);
+}
 
 async function callLlamaAPI(messages) {
   const apiKey = process.env.LLAMA_API_KEY;

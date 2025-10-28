@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -8,6 +8,9 @@ export default function Chat() {
   const [input, setInput] = useState('');
   const [copied, setCopied] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isPendingSend, setIsPendingSend] = useState(false);
+  const queuedSendRef = useRef(null);
+  const creatingConversationRef = useRef(false);
 
   // File upload state (attached to the next Send)
   const [selectedFile, setSelectedFile] = useState(null);
@@ -15,20 +18,39 @@ export default function Chat() {
   const fileInputRef = useRef(null);
 
   // Set your backend URL here
-  const API_BASE = 'https://llama-chat-backend.onrender.com';
+  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
+
+  const initConversation = useCallback(async () => {
+    if (creatingConversationRef.current) return;
+    creatingConversationRef.current = true;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/conversation`, { method: 'POST' });
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(errorText || 'Failed to initialize conversation');
+      }
+      const data = await res.json();
+      if (data?.conversationId) {
+        setConvId(data.conversationId);
+      } else {
+        throw new Error('Invalid conversation response');
+      }
+    } catch (err) {
+      console.error('Failed to create conversation:', err);
+      if (queuedSendRef.current) {
+        queuedSendRef.current = null;
+        setIsPendingSend(false);
+      }
+      setIsLoading(false);
+    } finally {
+      creatingConversationRef.current = false;
+    }
+  }, [API_BASE]);
 
   useEffect(() => {
-    async function initConversation() {
-      try {
-        const res = await fetch(`${API_BASE}/api/conversation`, { method: 'POST' });
-        const data = await res.json();
-        setConvId(data.conversationId);
-      } catch (err) {
-        console.error('Failed to create conversation:', err);
-      }
-    }
     initConversation();
-  }, [API_BASE]);
+  }, [initConversation]);
 
   // Allowed text/code file extensions for raw send (limit types)
   const ALLOWED_EXTENSIONS = [
@@ -48,32 +70,67 @@ export default function Chat() {
   const handleFileChange = (e) => {
     setFileError('');
     const file = e.target.files && e.target.files[0];
+
     if (!file) {
       setSelectedFile(null);
+      if (!convId && isPendingSend && queuedSendRef.current) {
+        queuedSendRef.current = { ...queuedSendRef.current, file: null };
+        const hasText = (queuedSendRef.current.textMessage || '').trim().length > 0;
+        if (!hasText) {
+          queuedSendRef.current = null;
+          setIsPendingSend(false);
+          setIsLoading(false);
+        }
+      }
       return;
     }
+
     if (!isAllowedFile(file)) {
       setSelectedFile(null);
       setFileError('Unsupported file type. Please choose a text/code file.');
+      if (!convId && isPendingSend && queuedSendRef.current) {
+        queuedSendRef.current = { ...queuedSendRef.current, file: null };
+        const hasText = (queuedSendRef.current.textMessage || '').trim().length > 0;
+        if (!hasText) {
+          queuedSendRef.current = null;
+          setIsPendingSend(false);
+          setIsLoading(false);
+        }
+      }
       return;
     }
+
     const MAX_BYTES = 1024 * 1024; // 1MB default safety limit
     if (file.size > MAX_BYTES) {
       setSelectedFile(null);
       setFileError('File too large (max 1MB). Consider splitting the content.');
+      if (!convId && isPendingSend && queuedSendRef.current) {
+        queuedSendRef.current = { ...queuedSendRef.current, file: null };
+        const hasText = (queuedSendRef.current.textMessage || '').trim().length > 0;
+        if (!hasText) {
+          queuedSendRef.current = null;
+          setIsPendingSend(false);
+          setIsLoading(false);
+        }
+      }
       return;
     }
+
     setSelectedFile(file);
+
+    if (!convId && isPendingSend && queuedSendRef.current) {
+      queuedSendRef.current = { ...queuedSendRef.current, file };
+    }
   };
 
-  const readFileAsText = (file) => new Promise((resolve, reject) => {
+  const readFileAsText = useCallback((file) => new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
     reader.onerror = reject;
     reader.readAsText(file);
-  });
+  }), []);
 
-  const buildCombinedContent = ({ textMessage, file, fileText }) => {
+  const buildCombinedContent = useCallback(({ textMessage, file, fileText }) => {
     if (file && typeof fileText === 'string') {
       const name = file.name || 'attachment';
       const mime = file.type || 'text/plain';
@@ -90,49 +147,107 @@ export default function Chat() {
       );
     }
     return textMessage || '';
-  };
+  }, []);
 
-  const handleSend = async () => {
-    if (!convId) return;
-    const textMessage = (input || '').trim();
-    if (!textMessage && !selectedFile) return; // require either message or a file
+  const sendMessage = useCallback(async ({ textMessage, file }) => {
+    if (!convId) return false;
+
+    const sanitizedText = (textMessage || '').trim();
+    const hasText = sanitizedText.length > 0;
+    const hasFile = Boolean(file);
+
+    if (!hasText && !hasFile) {
+      return false;
+    }
 
     setIsLoading(true);
 
     try {
       let fileText = null;
-      if (selectedFile) {
-        fileText = await readFileAsText(selectedFile);
+      if (file) {
+        fileText = await readFileAsText(file);
       }
 
-      const combined = buildCombinedContent({ textMessage, file: selectedFile, fileText });
-
-      // Only show the user bubble for the text message (if any)
-      if (textMessage) {
-        setMessages((msgs) => [...msgs, { role: 'user', content: textMessage }]);
+      if (hasText) {
+        setMessages((msgs) => [...msgs, { role: 'user', content: sanitizedText }]);
       }
 
-      const res = await fetch(`${API_BASE}/api/conversation/${convId}/message`, {
+      const combined = buildCombinedContent({ textMessage: sanitizedText, file, fileText });
+
+      const response = await fetch(`${API_BASE}/api/conversation/${convId}/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: combined })
       });
-      const data = await res.json();
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || 'Failed to send message');
+      }
+
+      const data = await response.json();
       if (data.reply) {
         setMessages((msgs) => [...msgs, { role: 'assistant', content: data.reply }]);
       }
 
-      // Clear input and file after send
       setInput('');
       setSelectedFile(null);
       setFileError('');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = null;
+      }
+
+      return true;
     } catch (err) {
       console.error('Failed to send message:', err);
       setMessages((msgs) => [...msgs, { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' }]);
+      return false;
     } finally {
       setIsLoading(false);
     }
+  }, [API_BASE, convId, buildCombinedContent, readFileAsText]);
+
+  const handleSend = async () => {
+    const trimmedInput = (input || '').trim();
+    const hasMessage = trimmedInput.length > 0;
+    const hasFile = Boolean(selectedFile);
+    if (!hasMessage && !hasFile) return;
+
+    const payload = { textMessage: input, file: selectedFile };
+
+    if (!convId) {
+      queuedSendRef.current = payload;
+      if (!isPendingSend) {
+        setIsPendingSend(true);
+        setIsLoading(true);
+      }
+      initConversation();
+      return;
+    }
+
+    await sendMessage(payload);
   };
+
+  useEffect(() => {
+    if (!convId || !isPendingSend || !queuedSendRef.current) return;
+
+    let cancelled = false;
+
+    const flushQueuedMessage = async () => {
+      const payload = queuedSendRef.current;
+      await sendMessage(payload);
+      if (cancelled) return;
+
+      queuedSendRef.current = null;
+      setIsPendingSend(false);
+    };
+
+    flushQueuedMessage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [convId, isPendingSend, sendMessage]);
 
   function copyTextFallback(text) {
     const textarea = document.createElement('textarea');
@@ -299,7 +414,23 @@ export default function Chat() {
           className="chat-input"
           placeholder="Type your message here... (Shift+Enter for new line, Enter to send). Optional: attach a text/code file."
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            const value = e.target.value;
+            setInput(value);
+            if (!convId && isPendingSend) {
+              const currentQueued = queuedSendRef.current || {};
+              const hasText = value.trim().length > 0;
+              const hasFile = Boolean(currentQueued.file || selectedFile);
+
+              if (!hasText && !hasFile) {
+                queuedSendRef.current = null;
+                setIsPendingSend(false);
+                setIsLoading(false);
+              } else {
+                queuedSendRef.current = { ...currentQueued, textMessage: value };
+              }
+            }
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
@@ -366,7 +497,7 @@ export default function Chat() {
         <button 
           onClick={handleSend} 
           className="btn btn-primary"
-          disabled={(!input.trim() && !selectedFile) || !convId || isLoading}
+          disabled={(!input.trim() && !selectedFile) || isLoading}
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
